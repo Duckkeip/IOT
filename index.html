@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase IoT Web</title>
+</head>
+<body>
+    <h1>Điều khiển thiết bị</h1>
+    <button onclick="turnOn()">Bật Đèn</button>
+    <button onclick="turnOff()">Tắt Đèn</button>
+    
+    <h3>Trạng thái hiện tại: <span id="status">Đang tải...</span></h3>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // Bước 3: Dán Config của bạn vào đây
+        const firebaseConfig = {
+            apiKey: "AIzaSyB13HrdOWMuve9DacypftLHGLYlAYblqDI",
+            authDomain: "iothome-e7d29.firebaseapp.com",
+            databaseURL: "https://iothome-e7d29-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "iothome-e7d29",
+            storageBucket: "iothome-e7d29.firebasestorage.app",
+            messagingSenderId: "512473639951",
+            appId: "1:512473639951:web:566f45c1bbdc56841ec77a",
+            measurementId: "G-D0YDSFV7F4"
+            };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Gửi dữ liệu lên Firebase khi bấm nút
+        window.turnOn = () => {
+            set(ref(db, 'devices/led1'), { status: "ON" })
+            .then(() => console.log("Đã gửi lệnh BẬT thành công!"))
+            .catch((error) => console.error("Lỗi gửi lệnh:", error));
+        };
+        window.turnOff = () => {
+            set(ref(db, 'devices/led1'), { status: "OFF" });
+        };
+
+        // Lắng nghe dữ liệu thay đổi từ Firebase (Realtime)
+        const ledRef = ref(db, 'devices/led1');
+        onValue(ledRef, (snapshot) => {
+            const data = snapshot.val();
+            const statusElement = document.getElementById('status');
+            
+            if (data && data.status) {
+                statusElement.innerText = data.status;
+                // Thay đổi màu sắc chữ cho sinh động
+                statusElement.style.color = data.status === "ON" ? "green" : "red";
+            } else {
+                statusElement.innerText = "OFF (Default)";
+            }
+        });
+    </script>
+</body>
+</html>
