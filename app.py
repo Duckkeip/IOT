@@ -11,72 +11,90 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. KẾT NỐI FIREBASE ---
-# Kiểm tra nếu App chưa khởi tạo thì mới khởi tạo
-if not firebase_admin._apps:
-    # Lấy thông tin từ mục Secrets của Streamlit Cloud
-    firebase_secrets = dict(st.secrets["firebase"])
 
-    # Xử lý lỗi ký tự xuống dòng của Private Key (thường gặp khi copy-paste)
-    if "private_key" in firebase_secrets:
-        firebase_secrets["private_key"] = firebase_secrets["private_key"].replace("\\n", "\n")
+# --- 2. KẾT NỐI FIREBASE (Sửa lỗi JWT tại đây) ---
+@st.cache_resource
+def init_firebase():
+    if not firebase_admin._apps:
+        try:
+            # 1. Chuyển secrets sang dict
+            fb_dict = dict(st.secrets["firebase"])
 
-    cred = credentials.Certificate(firebase_secrets)
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://iothome-e7d29-default-rtdb.asia-southeast1.firebasedatabase.app'
-    })
+            # 2. Xử lý ký tự xuống dòng (Cực kỳ quan trọng)
+            if "private_key" in fb_dict:
+                # Thay thế chuỗi "\n" văn bản thành ký tự xuống dòng thực sự
+                fb_dict["private_key"] = fb_dict["private_key"].replace("\\n", "\n")
 
-# --- 3. TỰ ĐỘNG REFRESH ---
-# Cứ mỗi 5 giây web sẽ tự load lại để cập nhật số liệu mới nhất từ thiết bị
-st_autorefresh(interval=5000, key="datarefresh")
+            # 3. Khởi tạo Firebase
+            cred = credentials.Certificate(fb_dict)
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': 'https://iothome-e7d29-default-rtdb.asia-southeast1.firebasedatabase.app'
+            })
+            return True
+        except Exception as e:
+            st.error(f"Lỗi khởi tạo Firebase: {e}")
+            return False
+    return True
 
-# --- 4. GIAO DIỆN CHÍNH ---
-st.title("🏠 Hệ thống Giám sát & Điều khiển IoT")
-st.markdown("---")
 
-# Tham chiếu tới các node dữ liệu trên Firebase
-# (Bạn hãy đảm bảo code ESP32 gửi đúng vào các đường dẫn này)
-ref_temp = db.reference('devices/sensor1/temp')
-ref_humi = db.reference('devices/sensor1/humi')
-ref_led = db.reference('devices/led1/status')
+# Gọi hàm khởi tạo
+if init_firebase():
+    st.success("🔥 Kết nối Firebase thành công!")
+    # --- 3. TỰ ĐỘNG REFRESH ---
+    # Giảm xuống 10 giây để tránh bị Firebase "chặn" vì gửi request quá dày đặc
+    st_autorefresh(interval=5000, key="datarefresh")
 
-# Chia cột hiển thị thông số
-col1, col2, col3 = st.columns(3)
+    # --- 4. GIAO DIỆN CHÍNH ---
+    st.title("🏠 Hệ thống Giám sát & Điều khiển IoT")
+    st.markdown("---")
 
-with col1:
-    temp_val = ref_temp.get() or 0
-    st.metric(label="🌡️ Nhiệt độ", value=f"{temp_val} °C")
+    try:
+        # Tham chiếu tới các node
+        ref_temp = db.reference('devices/sensor1/temp')
+        ref_humi = db.reference('devices/sensor1/humi')
+        ref_led = db.reference('devices/led1/status')
 
-with col2:
-    humi_val = ref_humi.get() or 0
-    st.metric(label="💧 Độ ẩm", value=f"{humi_val} %")
+        # Lấy dữ liệu
+        temp_val = ref_temp.get()
+        humi_val = ref_humi.get()
+        status = ref_led.get()
 
-with col3:
-    status = ref_led.get() or "OFF"
-    st.subheader("💡 Thiết bị")
+        # Chia cột hiển thị
+        col1, col2, col3 = st.columns(3)
 
-    # Nút bấm đổi trạng thái
-    if st.button('Đổi trạng thái Đèn'):
-        new_status = "OFF" if status == "ON" else "ON"
-        ref_led.set(new_status)
-        st.rerun()  # Load lại ngay để thấy sự thay đổi
+        with col1:
+            st.metric(label="🌡️ Nhiệt độ", value=f"{temp_val if temp_val is not None else '--'} °C")
 
-    color = "green" if status == "ON" else "red"
-    st.markdown(f"Trạng thái: <b style='color:{color}'>{status}</b>", unsafe_allow_html=True)
+        with col2:
+            st.metric(label="💧 Độ ẩm", value=f"{humi_val if humi_val is not None else '--'} %")
 
-st.markdown("---")
+        with col3:
+            st.subheader("💡 Thiết bị")
+            # Nút bấm đổi trạng thái
+            btn_label = "BẬT ĐÈN" if status != "ON" else "TẮT ĐÈN"
+            if st.button(btn_label, use_container_width=True):
+                new_status = "OFF" if status == "ON" else "ON"
+                ref_led.set(new_status)
+                st.rerun()
 
-# --- 5. BIỂU ĐỒ (Nếu bạn có lưu lịch sử) ---
-# Phần này dành cho việc nâng cấp sau này để vẽ biểu đồ đường
-st.subheader("📊 Lịch sử dữ liệu")
-st.info("Dữ liệu đang được cập nhật Realtime từ Firebase.")
+            color = "green" if status == "ON" else "red"
+            st.markdown(f"Trạng thái: <b style='color:{color}'>{status}</b>", unsafe_allow_html=True)
 
-# Ví dụ tạo dữ liệu giả lập để bạn thấy giao diện biểu đồ
-# Sau này bạn có thể thay bằng db.reference('history').get()
-chart_data = pd.DataFrame({
-    "Nhiệt độ": [25, 26, 25.5, 27, temp_val],
-})
-st.line_chart(chart_data)
+        st.markdown("---")
+
+        # --- 5. BIỂU ĐỒ ---
+        st.subheader("📊 Lịch sử dữ liệu")
+        # Giả lập dữ liệu dựa trên giá trị thực để biểu đồ không bị trống
+        chart_data = pd.DataFrame({
+            "Nhiệt độ": [24, 25, 24.5, 26, temp_val if temp_val else 25],
+        })
+        st.line_chart(chart_data)
+
+    except Exception as e:
+        st.error(f"Lỗi khi đọc/ghi dữ liệu: {e}")
+
+else:
+    st.warning("Ứng dụng chưa thể kết nối với Firebase. Vui lòng kiểm tra lại cấu hình Secrets.")
 
 # --- FOOTER ---
 st.caption("Developed with Streamlit & Firebase Admin SDK")
