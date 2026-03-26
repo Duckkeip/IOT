@@ -81,26 +81,32 @@ if init_firebase():
             st.write(f"🏃 Hiện diện: **{ht.get('HienDien', 'N/A')}**")
             st.write(f"🕒 Cập nhật: {ht.get('SyncTime', 'N/A')}")
         with col_r:
+            st.write("### 🎮 Điều khiển")
+            
             # --- ĐIỀU KHIỂN ĐÈN ---
-            den_status = tb.get('Den', 'OFF')
-            if st.button(f"💡 ĐÈN: {den_status}", use_container_width=True, type="secondary" if den_status=="OFF" else "primary"):
-                new_den = "ON" if den_status == "OFF" else "OFF"
-                db.reference('SmartHome/HienTai/ThietBi/Den').set(new_den)
+            # Lấy trạng thái thực tế từ ESP32 gửi lên
+            den_real = tb.get('Den', 'OFF') 
+            if st.button(f"💡 ĐÈN: {den_real}", use_container_width=True, type="primary" if den_real=="ON" else "secondary"):
+                new_st = "ON" if den_real == "OFF" else "OFF"
+                # Ghi lệnh vào Firebase
+                db.reference('SmartHome/HienTai/ThietBi/Den').set(new_st)
+                st.toast(f"Đã gửi lệnh bật Đèn: {new_st}")
                 st.rerun()
 
-            st.write("") # Tạo khoảng cách nhỏ
+            st.write("") 
 
-            # --- ĐIỀU KHIỂN QUẠT (MỚI) ---
-            quat_status = tb.get('Quat', 'OFF')
-            # Nút bấm này sẽ gửi lệnh ON/OFF xuống Firebase
-            # ESP32 sẽ đọc lệnh này và kết hợp với logic cảm biến
-            if st.button(f"🌀 QUẠT: {quat_status}", use_container_width=True, type="secondary" if quat_status=="OFF" else "primary"):
-                new_quat = "ON" if quat_status == "OFF" else "OFF"
-                db.reference('SmartHome/HienTai/ThietBi/Quat').set(new_quat)
+            # --- ĐIỀU KHIỂN QUẠT ---
+            quat_real = tb.get('Quat', 'OFF')
+            if st.button(f"🌀 QUẠT: {quat_real}", use_container_width=True, type="primary" if quat_real=="ON" else "secondary"):
+                new_st = "ON" if quat_real == "OFF" else "OFF"
+                # Ghi lệnh vào Firebase
+                db.reference('SmartHome/HienTai/ThietBi/Quat').set(new_st)
+                st.toast(f"Đã gửi lệnh bật Quạt: {new_st}")
                 st.rerun()
             
-            # Hiển thị chú thích nhỏ để người dùng hiểu cơ chế Hybrid
-            st.caption("ℹ️ Quạt sẽ tự bật nếu Gas nguy hiểm hoặc quá nóng dù bạn tắt ở đây.")
+            st.caption("⚠️ Lưu ý: Sau khi ấn, hãy đợi vài giây để ESP32 xác nhận trạng thái.")
+            if st.button("🔄 Làm mới dữ liệu"):
+                st.rerun()
 
            
             # --- TAB 2: LỊCH SỬ HỆ THỐNG (LichSuHeThong) ---
