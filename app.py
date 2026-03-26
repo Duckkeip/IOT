@@ -143,45 +143,45 @@ if init_firebase():
                     st.info("Hiện tại chưa có dữ liệu lịch sử trên hệ thống.")
     # --- TAB 3: NHẬT KÝ KHẨN CẤP (History_Safe) ---
     with tab3:
-        st.subheader("⚠️ Cảnh báo an ninh & khẩn cấp (Toàn thời gian)")
+        st.subheader("⚠️ Nhật ký cảnh báo an ninh")
         
-        # 1. Trỏ đến nhánh History_Safe (hoặc NhatKy_KhanCap tùy bạn đặt tên trên Firebase)
-        # Theo file JSON của bạn là 'History_Safe'
-        ref_safe = db.reference('SmartHome/NhatKy_KhanCap')
-        data_safe = ref_safe.get()
+        # 1. Trỏ đến đúng nhánh trong file JSON của bạn
+        ref_khan_cap = db.reference('SmartHome/NhatKy_KhanCap')
+        data_khan_cap = ref_khan_cap.get()
     
-        if data_safe:
-            safe_records = []
+        if data_khan_cap:
+            all_alerts = []
             
-            # 2. Duyệt qua từng Ngày
-            for ngay, danh_sach_canh_bao in data_safe.items():
-                if isinstance(danh_sach_canh_bao, dict):
-                    # 3. Duyệt qua từng mã Push ID cảnh báo
-                    for push_id, val in danh_sach_canh_bao.items():
-                        record = {
-                            "Ngày": ngay,
-                            "Thời gian": val.get('Time', '--'),
-                            "Sự kiện": val.get('Event', '--'),
-                            "Chi tiết": val.get('Detail', '--')
-                        }
-                        safe_records.append(record)
+            # 2. Duyệt qua danh sách phẳng các mã ID
+            for alert_id, val in data_khan_cap.items():
+                # Xử lý linh hoạt cho cả 2 kiểu đặt tên key (mới và cũ) trong file của bạn
+                time_val = val.get('ThoiGian') or val.get('Time') or "--"
+                event_val = val.get('Loai') or val.get('Event') or "--"
+                detail_val = val.get('ChiTiet') or val.get('Detail') or "--"
+                
+                alert_record = {
+                    "Thời Gian": time_val,
+                    "Loại Sự Kiện": event_val,
+                    "Chi Tiết Hệ Thống": detail_val
+                }
+                all_alerts.append(alert_record)
     
-            if safe_records:
-                # 4. Tạo DataFrame
-                df_safe = pd.DataFrame(safe_records)
+            if all_alerts:
+                # 3. Tạo DataFrame
+                df_alerts = pd.DataFrame(all_alerts)
                 
-                # Đảo ngược để cảnh báo mới nhất lên đầu
-                df_safe = df_safe.iloc[::-1]
+                # Đảo ngược để sự cố mới nhất hiện lên trên cùng
+                df_alerts = df_alerts.iloc[::-1]
                 
-                # Hiển thị bảng với màu sắc cảnh báo
-                st.error("Danh sách các sự cố đã ghi nhận:")
-                st.dataframe(df_safe, use_container_width=True)
+                # 4. Hiển thị bảng
+                st.error("Các tình huống bất thường đã ghi nhận:")
+                st.dataframe(df_alerts, use_container_width=True)
                 
-                # Thêm nút xóa lịch sử nếu cần (tùy chọn)
-                if st.button("🗑️ Xóa nhật ký khẩn cấp", key="clear_safe"):
-                    ref_safe.delete()
+                # Nút xóa lịch sử nếu cần
+                if st.button("🗑️ Xóa sạch nhật ký khẩn cấp", key="del_alert"):
+                    ref_khan_cap.delete()
                     st.rerun()
             else:
-                st.info("Không có dữ liệu chi tiết trong các ngày.")
+                st.info("Chưa có dữ liệu cảnh báo.")
         else:
-            st.success("✅ Hệ thống an toàn. Chưa ghi nhận sự cố khẩn cấp nào.")
+            st.success("✅ Hiện tại không có cảnh báo nguy hiểm nào.")
