@@ -26,7 +26,7 @@ def init_firebase():
 
 
 if init_firebase():
-    #st_autorefresh(interval=5000, key="f5_clean")
+    st_autorefresh(interval=5000, key="f5_clean")
 
     # Giao diện chính với 3 Tabs
     tab1, tab2, tab3 = st.tabs(["🔴 TRẠNG THÁI HIỆN TẠI", "📜 LỊCH SỬ HỆ THỐNG", "🚨 NHẬT KÝ KHẨN CẤP"])
@@ -83,29 +83,20 @@ if init_firebase():
         with col_r:
             st.write("### 🎮 Điều khiển")
             
-            # --- ĐIỀU KHIỂN ĐÈN ---
-            # Lấy trạng thái thực tế từ ESP32 gửi lên
-            den_real = tb.get('Den', 'OFF') 
-            if st.button(f"💡 ĐÈN: {den_real}", use_container_width=True, type="primary" if den_real=="ON" else "secondary"):
-                new_st = "ON" if den_real == "OFF" else "OFF"
-                # Ghi lệnh vào Firebase
+            # Lấy trạng thái hiện tại từ Firebase
+            current_den = tb.get('Den', 'OFF')
+            current_quat = tb.get('Quat', 'OFF')
+    
+            # Nút Đèn
+            if st.button(f"💡 ĐÈN: {current_den}", use_container_width=True, type="primary" if current_den=="ON" else "secondary"):
+                new_st = "ON" if current_den == "OFF" else "OFF"
                 db.reference('SmartHome/HienTai/ThietBi/Den').set(new_st)
-                st.toast(f"Đã gửi lệnh bật Đèn: {new_st}")
-                st.rerun()
-
-            st.write("") 
-
-            # --- ĐIỀU KHIỂN QUẠT ---
-            quat_real = tb.get('Quat', 'OFF')
-            if st.button(f"🌀 QUẠT: {quat_real}", use_container_width=True, type="primary" if quat_real=="ON" else "secondary"):
-                new_st = "ON" if quat_real == "OFF" else "OFF"
-                # Ghi lệnh vào Firebase
+                st.rerun() # Reload ngay lập tức để gửi lệnh đi nhanh nhất
+    
+            # Nút Quạt
+            if st.button(f"🌀 QUẠT: {current_quat}", use_container_width=True, type="primary" if current_quat=="ON" else "secondary"):
+                new_st = "ON" if current_quat == "OFF" else "OFF"
                 db.reference('SmartHome/HienTai/ThietBi/Quat').set(new_st)
-                st.toast(f"Đã gửi lệnh bật Quạt: {new_st}")
-                st.rerun()
-            
-            st.caption("⚠️ Lưu ý: Sau khi ấn, hãy đợi vài giây để ESP32 xác nhận trạng thái.")
-            if st.button("🔄 Làm mới dữ liệu"):
                 st.rerun()
 
            
