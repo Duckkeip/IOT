@@ -147,7 +147,7 @@ if init_firebase():
         
         # 1. Trỏ đến nhánh History_Safe (hoặc NhatKy_KhanCap tùy bạn đặt tên trên Firebase)
         # Theo file JSON của bạn là 'History_Safe'
-        ref_safe = db.reference('SmartHome/History_Safe')
+        ref_safe = db.reference('SmartHome/NhatKy_KhanCap')
         data_safe = ref_safe.get()
     
         if data_safe:
