@@ -1,4 +1,4 @@
-<img width="427" height="81" alt="image" src="https://github.com/user-attachments/assets/f0b415a8-80a3-4132-b71e-2eb20fa9a4d3" />
+<img width="1227" height="321" alt="image" src="https://github.com/user-attachments/assets/f0b415a8-80a3-4132-b71e-2eb20fa9a4d3" />
 
 
 # Dự án: ESP32 và FIREBASE
