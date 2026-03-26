@@ -26,7 +26,7 @@ def init_firebase():
 
 
 if init_firebase():
-    st_autorefresh(interval=5000, key="f5_clean")
+    #st_autorefresh(interval=5000, key="f5_clean")
 
     # Giao diện chính với 3 Tabs
     tab1, tab2, tab3 = st.tabs(["🔴 TRẠNG THÁI HIỆN TẠI", "📜 LỊCH SỬ HỆ THỐNG", "🚨 NHẬT KÝ KHẨN CẤP"])
