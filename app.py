@@ -102,48 +102,45 @@ if init_firebase():
            
             # --- TAB 2: LỊCH SỬ HỆ THỐNG (LichSuHeThong) ---
     with tab2:
-                st.subheader("📜 Nhật ký hệ thống (Cập nhật cấu trúc mới)")
-            
-                # 1. Truy vấn nhánh LichSu
-                # Lưu ý: Bạn có thể thêm .limit_to_last(1) để chỉ lấy ngày gần nhất 
-                # hoặc lấy cả để duyệt tất cả các ngày.
-                ls_data = db.reference('SmartHome/LichSu').get()
-            
-                if ls_data:
-                    all_rows = []
+                st.subheader("📜 Nhật ký hệ thống toàn thời gian")
+
+                # 1. Trỏ đến nhánh LichSu để lấy toàn bộ danh sách các ngày
+                ref_lich_su = db.reference('SmartHome/LichSu')
+                data_toan_bo = ref_lich_su.get()
+                
+                if data_toan_bo:
+                    all_records = []
                     
-                    # 2. Duyệt qua từng Ngày (ví dụ: "2026-03-20")
-                    for date_key, entries in ls_data.items():
-                        if isinstance(entries, dict):
-                            # 3. Duyệt qua từng bản ghi (Push ID) trong ngày đó
-                            for push_id, val in entries.items():
-                                # Trích xuất dữ liệu dựa trên key viết tắt trong ảnh của bạn
-                                row = {
-                                    "Thời Gian": val.get('Gio', '--'),
-                                    "Nhiệt Độ (T)": val.get('T', '--'),
-                                    "Độ Ẩm (H)": val.get('H', '--'),
-                                    "Ánh Sáng (L)": val.get('L', '--'),
-                                    "Chỉ số Gas (G)": val.get('G', '--'),
-                                    "Ngày Log": date_key # Thêm cột này để dễ quản lý
+                    # 2. Duyệt qua từng ngày (2026-03-20, 2026-03-23, 2026-03-26...)
+                    for ngay, danh_sach_ban_ghi in data_toan_bo.items():
+                        if isinstance(danh_sach_ban_ghi, dict):
+                            # 3. Duyệt qua từng bản ghi cụ thể trong ngày đó
+                            for push_id, val in danh_sach_ban_ghi.items():
+                                # Tạo một dictionary chuẩn hóa dữ liệu
+                                # Lưu ý: Cấu trúc của bạn có sự thay đổi giữa các ngày (G/H/L/T và Gas/Humid/Light/Temp)
+                                record = {
+                                    "Ngày": ngay,
+                                    "Thời gian": val.get('Gio') or val.get('Time') or "--",
+                                    "Nhiệt độ (°C)": val.get('T') or val.get('Temp') or "--",
+                                    "Độ ẩm (%)": val.get('H') or val.get('Humid') or "--",
+                                    "Ánh sáng": val.get('L') or val.get('Light') or "--",
+                                    "Khí Gas": val.get('G') or val.get('Gas') or "--"
                                 }
-                                all_rows.append(row)
-            
-                    if all_rows:
-                        # 4. Tạo DataFrame và xử lý hiển thị
-                        df_ls = pd.DataFrame(all_rows)
+                                all_records.append(record)
+                
+                    if all_records:
+                        # 4. Chuyển thành DataFrame để hiển thị
+                        df = pd.DataFrame(all_records)
                         
-                        # Ép kiểu string để tránh lỗi PyArrow
-                        df_ls = df_ls.astype(str)
+                        # Sắp xếp theo thời gian mới nhất lên đầu
+                        # Chuyển cột 'Thời gian' sang định dạng datetime để sort chính xác nếu cần
+                        df = df.iloc[::-1] 
                         
-                        # Sắp xếp để bản ghi mới nhất (thường là cuối danh sách) lên đầu
-                        # Nếu 'Gio' định dạng chuẩn, bạn có thể sort theo 'Gio'
-                        df_ls = df_ls.iloc[::-1]
-            
-                        st.dataframe(df_ls, use_container_width=True)
+                        st.dataframe(df, use_container_width=True)
                     else:
-                        st.info("Không tìm thấy bản ghi nào trong các thư mục ngày.")
+                        st.warning("Không có dữ liệu chi tiết trong các ngày.")
                 else:
-                    st.info("Nhánh 'LichSu' hiện đang trống.")
+                    st.info("Hiện tại chưa có dữ liệu lịch sử trên hệ thống.")
     # --- TAB 3: NHẬT KÝ KHẨN CẤP (History_Safe) ---
     with tab3:
         st.subheader("⚠️ Cảnh báo an ninh & khẩn cấp")
