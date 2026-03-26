@@ -73,12 +73,7 @@ if init_firebase():
     
         # 4. Gas (Giữ nguyên hoặc tối ưu màu sắc)
         gas_val = at.get('Val', 0)
-        c4.metric(
-            label="💨 Gas", 
-            value=gas_val, 
-            delta=at.get('Status'), 
-            delta_color="inverse" # Đỏ nếu status là chữ, hoặc dùng "normal" tùy bạn
-        )
+        c4.metric("💨 Gas", gas_val, delta=at.get('Status'), delta_color="inverse")
 
         st.divider()
         col_l, col_r = st.columns(2)
