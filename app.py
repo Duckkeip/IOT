@@ -143,18 +143,45 @@ if init_firebase():
                     st.info("Hiện tại chưa có dữ liệu lịch sử trên hệ thống.")
     # --- TAB 3: NHẬT KÝ KHẨN CẤP (History_Safe) ---
     with tab3:
-        st.subheader("⚠️ Cảnh báo an ninh & khẩn cấp")
-        h_safe = smart_home.get('History_Safe', {})
-        if h_safe:
-            df_safe = pd.DataFrame.from_dict(h_safe, orient='index')
-            df_safe = df_safe.loc[:, ~df_safe.columns.duplicated()]
-            df_safe = df_safe.sort_index(ascending=False)
-
-            # Hiển thị với định dạng cảnh báo
-            st.error("Danh sách các sự kiện bất thường được ghi nhận:")
-            st.table(df_safe)
+        st.subheader("⚠️ Cảnh báo an ninh & khẩn cấp (Toàn thời gian)")
+        
+        # 1. Trỏ đến nhánh History_Safe (hoặc NhatKy_KhanCap tùy bạn đặt tên trên Firebase)
+        # Theo file JSON của bạn là 'History_Safe'
+        ref_safe = db.reference('SmartHome/History_Safe')
+        data_safe = ref_safe.get()
+    
+        if data_safe:
+            safe_records = []
+            
+            # 2. Duyệt qua từng Ngày
+            for ngay, danh_sach_canh_bao in data_safe.items():
+                if isinstance(danh_sach_canh_bao, dict):
+                    # 3. Duyệt qua từng mã Push ID cảnh báo
+                    for push_id, val in danh_sach_canh_bao.items():
+                        record = {
+                            "Ngày": ngay,
+                            "Thời gian": val.get('Time', '--'),
+                            "Sự kiện": val.get('Event', '--'),
+                            "Chi tiết": val.get('Detail', '--')
+                        }
+                        safe_records.append(record)
+    
+            if safe_records:
+                # 4. Tạo DataFrame
+                df_safe = pd.DataFrame(safe_records)
+                
+                # Đảo ngược để cảnh báo mới nhất lên đầu
+                df_safe = df_safe.iloc[::-1]
+                
+                # Hiển thị bảng với màu sắc cảnh báo
+                st.error("Danh sách các sự cố đã ghi nhận:")
+                st.dataframe(df_safe, use_container_width=True)
+                
+                # Thêm nút xóa lịch sử nếu cần (tùy chọn)
+                if st.button("🗑️ Xóa nhật ký khẩn cấp", key="clear_safe"):
+                    ref_safe.delete()
+                    st.rerun()
+            else:
+                st.info("Không có dữ liệu chi tiết trong các ngày.")
         else:
-            st.success("Hệ thống an toàn. Chưa ghi nhận sự cố khẩn cấp.")
-
-else:
-    st.error("Vui lòng kiểm tra lại cấu hình Secrets trên Streamlit Cloud.")
+            st.success("✅ Hệ thống an toàn. Chưa ghi nhận sự cố khẩn cấp nào.")
