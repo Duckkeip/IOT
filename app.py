@@ -101,56 +101,49 @@ if init_firebase():
 
            
             # --- TAB 2: LỊCH SỬ HỆ THỐNG (LichSuHeThong) ---
-            with tab2:
-                st.subheader("📜 Nhật ký thiết bị (Đã sửa lỗi kiểu dữ liệu)")
-
-                ls_he_thong = smart_home.get('LichSuHeThong', {})
-
-                if ls_he_thong:
-                    rows = []
-
-                    if isinstance(ls_he_thong, dict):
-                        for key, val in ls_he_thong.items():
-                            if not isinstance(val, dict):
-                                continue
-
-
-                            def get_smart(field_data, sub_key):
-                                if isinstance(field_data, dict):
-                                    return field_data.get(sub_key, '--')
-                                return field_data if field_data is not None else '--'
-
-
-                            row = {
-                                "Thời Gian": str(val.get('ThoiGian', '--')),
-                                "Nhiệt Độ": str(get_smart(val.get('NhietDo'), 'GiaTri')),
-                                "Độ Ẩm": str(get_smart(val.get('DoAm'), 'GiaTri')),
-                                "Ánh Sáng": str(get_smart(val.get('AnhSang'), 'TiLe')),
-                                "Chỉ số Gas": str(get_smart(val.get('KhiGas'), 'DiemSo') if 'DiemSo' in str(
-                                    val.get('KhiGas')) else get_smart(val.get('KhiGas'), 'ChiSo')),
-                                "Trạng Thái Gas": str(get_smart(val.get('KhiGas'), 'TrangThai')),
-                                "An Ninh": str(get_smart(val.get('AnNinh'), 'HienTrang') if 'HienTrang' in str(
-                                    val.get('AnNinh')) else get_smart(val.get('AnNinh'), 'Nguoi')),
-                                "Quạt": str(get_smart(val.get('HeThong'), 'Quat'))
-                            }
-                            rows.append(row)
-
-                    if rows:
-                        df_ls = pd.DataFrame(rows)
-
-                        # --- BƯỚC QUAN TRỌNG NHẤT ĐỂ HẾT LỖI ---
-                        # Ép toàn bộ DataFrame thành kiểu String để pyarrow không bắt lỗi
+    with tab2:
+                st.subheader("📜 Nhật ký hệ thống (Cập nhật cấu trúc mới)")
+            
+                # 1. Truy vấn nhánh LichSu
+                # Lưu ý: Bạn có thể thêm .limit_to_last(1) để chỉ lấy ngày gần nhất 
+                # hoặc lấy cả để duyệt tất cả các ngày.
+                ls_data = db.reference('SmartHome/LichSu').get()
+            
+                if ls_data:
+                    all_rows = []
+                    
+                    # 2. Duyệt qua từng Ngày (ví dụ: "2026-03-20")
+                    for date_key, entries in ls_data.items():
+                        if isinstance(entries, dict):
+                            # 3. Duyệt qua từng bản ghi (Push ID) trong ngày đó
+                            for push_id, val in entries.items():
+                                # Trích xuất dữ liệu dựa trên key viết tắt trong ảnh của bạn
+                                row = {
+                                    "Thời Gian": val.get('Gio', '--'),
+                                    "Nhiệt Độ (T)": val.get('T', '--'),
+                                    "Độ Ẩm (H)": val.get('H', '--'),
+                                    "Ánh Sáng (L)": val.get('L', '--'),
+                                    "Chỉ số Gas (G)": val.get('G', '--'),
+                                    "Ngày Log": date_key # Thêm cột này để dễ quản lý
+                                }
+                                all_rows.append(row)
+            
+                    if all_rows:
+                        # 4. Tạo DataFrame và xử lý hiển thị
+                        df_ls = pd.DataFrame(all_rows)
+                        
+                        # Ép kiểu string để tránh lỗi PyArrow
                         df_ls = df_ls.astype(str)
-
-                        # Đảo ngược để dữ liệu mới nhất lên đầu
+                        
+                        # Sắp xếp để bản ghi mới nhất (thường là cuối danh sách) lên đầu
+                        # Nếu 'Gio' định dạng chuẩn, bạn có thể sort theo 'Gio'
                         df_ls = df_ls.iloc[::-1]
-
-                        # Hiển thị bảng
-                        st.dataframe(df_ls, width='stretch')
+            
+                        st.dataframe(df_ls, use_container_width=True)
                     else:
-                        st.info("Chưa có dữ liệu hợp lệ.")
+                        st.info("Không tìm thấy bản ghi nào trong các thư mục ngày.")
                 else:
-                    st.info("Mục LichSuHeThong trống.")
+                    st.info("Nhánh 'LichSu' hiện đang trống.")
     # --- TAB 3: NHẬT KÝ KHẨN CẤP (History_Safe) ---
     with tab3:
         st.subheader("⚠️ Cảnh báo an ninh & khẩn cấp")
