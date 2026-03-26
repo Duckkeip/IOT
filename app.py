@@ -39,19 +39,46 @@ if init_firebase():
 
     # --- TAB 1: HIỆN TẠI (DASHBOARD) ---
     with tab1:
-        ht = smart_home.get('HienTai', {})
-        mt = ht.get('MoiTruong', {})
-        at = ht.get('AnToan', {}).get('Gas', {})
-        tb = ht.get('ThietBi', {})
+    ht = smart_home.get('HienTai', {})
+    mt = ht.get('MoiTruong', {})
+    at = ht.get('AnToan', {}).get('Gas', {})
+    tb = ht.get('ThietBi', {})
 
-        st.subheader("📊 Thông số môi trường & Thiết bị")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🌡️ Nhiệt độ", f"{mt.get('Nhiệt độ', {}).get('Val', '--')}°C")
-        c2.metric("💧 Độ ẩm", f"{mt.get('Độ ẩm', {}).get('Val', '--')}%")
-        c3.metric("☀️ Ánh sáng", f"{mt.get('AnhSang', {}).get('Pct', '--')}%")
+    st.subheader("📊 Thông số môi trường & Thiết bị")
+    c1, c2, c3, c4 = st.columns(4)
 
-        gas_val = at.get('Val', 0)
-        c4.metric("💨 Gas", gas_val, delta=at.get('Status'), delta_color="inverse")
+    # 1. Nhiệt độ
+    temp_data = mt.get('NhietDo', {})
+    c1.metric(
+        label="🌡️ Nhiệt độ", 
+        value=f"{temp_data.get('Val', '--')}°C",
+        delta=temp_data.get('Status') # Hiện: "Binh thuong", "Nong",...
+    )
+
+    # 2. Độ ẩm
+    hum_data = mt.get('DoAm', {})
+    c2.metric(
+        label="💧 Độ ẩm", 
+        value=f"{hum_data.get('Val', '--')}%",
+        delta=hum_data.get('Status') # Hiện: "Thoai mai" như trong ảnh
+    )
+
+    # 3. Ánh sáng
+    light_data = mt.get('AnhSang', {})
+    c3.metric(
+        label="☀️ Ánh sáng", 
+        value=f"{light_data.get('Pct', '--')}%",
+        delta=light_data.get('Status') # Hiện: "Rat sang" như trong ảnh
+    )
+
+    # 4. Gas (Giữ nguyên hoặc tối ưu màu sắc)
+    gas_val = at.get('Val', 0)
+    c4.metric(
+        label="💨 Gas", 
+        value=gas_val, 
+        delta=at.get('Status'), 
+        delta_color="inverse" # Đỏ nếu status là chữ, hoặc dùng "normal" tùy bạn
+    )
 
         st.divider()
         col_l, col_r = st.columns(2)
