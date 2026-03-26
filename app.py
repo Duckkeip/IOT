@@ -124,7 +124,7 @@ if init_firebase():
                                     "Nhiệt độ (°C)": val.get('T') or val.get('Temp') or "--",
                                     "Độ ẩm (%)": val.get('H') or val.get('Humid') or "--",
                                     "Ánh sáng": val.get('L') or val.get('Light') or "--",
-                                    "Khí Gas": val.get('G') or val.get('Gas') or "--"
+                                    "Khí Gas": val.get('G') or val.get('Gas') or "0"
                                 }
                                 all_records.append(record)
                 
