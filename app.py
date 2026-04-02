@@ -84,7 +84,7 @@ if init_firebase():
             st.write("### 🎮 Điều khiển")
             
             # Lấy trạng thái hiện tại từ Firebase
-           current_den = tb.get('Den', 'OFF')
+           current_den = tb.get('Den', 'OFF'),
            current_quat = tb.get('Quat', 'OFF')
     
             # Nút Đèn
