@@ -84,8 +84,8 @@ if init_firebase():
             st.write("### 🎮 Điều khiển")
             
             # Lấy trạng thái hiện tại từ Firebase
-            current_den = tb.get('Den', 'OFF')
-            current_quat = smart_home.get('Command', {}).get('Quat', 'OFF')
+           current_den = tb.get('Den', 'OFF')
+           current_quat = tb.get('Quat', 'OFF')
     
             # Nút Đèn
             if st.button(f"💡 ĐÈN: {current_den}", use_container_width=True, type="primary" if current_den=="ON" else "secondary"):
@@ -96,7 +96,7 @@ if init_firebase():
             # Nút Quạt
             if st.button(f"🌀 QUẠT: {current_quat}", use_container_width=True, type="primary" if current_quat=="ON" else "secondary"):
                 new_st = "ON" if current_quat == "OFF" else "OFF"
-                db.reference('SmartHome/Command/Quat').set(new_st)
+                 db.reference('SmartHome/HienTai/ThietBi/Quat').set(new_st)
                 st.rerun()
 
            
