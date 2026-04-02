@@ -84,8 +84,8 @@ if init_firebase():
             st.write("### 🎮 Điều khiển")
             
             # Lấy trạng thái hiện tại từ Firebase
-           current_den = tb.get('Den', 'OFF')
-           current_quat = tb.get('Quat', 'OFF')
+            current_den = tb.get('Den', 'OFF')
+            current_quat = tb.get('Quat', 'OFF')
     
             # Nút Đèn
             if st.button(f"💡 ĐÈN: {current_den}", use_container_width=True, type="primary" if current_den=="ON" else "secondary"):
