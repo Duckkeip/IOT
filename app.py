@@ -96,7 +96,7 @@ if init_firebase():
             # Nút Quạt
             if st.button(f"🌀 QUẠT: {current_quat}", use_container_width=True, type="primary" if current_quat=="ON" else "secondary"):
                 new_st = "ON" if current_quat == "OFF" else "OFF"
-                db.reference('SmartHome/HienTai/ThietBi/Quat').set(new_st)
+                db.reference('SmartHome/Command/Quat').set(new_st)
                 st.rerun()
 
            
