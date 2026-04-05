@@ -1,5 +1,5 @@
 /* * ĐỒ ÁN TỐT NGHIỆP: SMART HOME ANALYTICS & SAFETY SYSTEM
- * Phiên bản: 32.0 (Cập nhật: Quạt làm mát kết hợp cảm biến Hiện diện để chống chạy tràn)
+ * Phiên bản: 36.8 (Fix lỗi Còi Active Low kêu liên tục)
  */
 
 #include <Arduino.h>
@@ -9,6 +9,7 @@
 #include "time.h"
 #include "soc/soc.h"           
 #include "soc/rtc_cntl_reg.h"  
+#include <ESP32Servo.h> 
 
 // --- 1. CẤU HÌNH HỆ THỐNG ---
 #define WIFI_SSID "dick"
@@ -18,59 +19,67 @@
 #define USER_EMAIL "esp32@smarthome.com"
 #define USER_PASSWORD "123456789"
 
+// --- 2. HIỆU CHUẨN THEO THỰC TẾ LINH KIỆN CỦA BẠN ---
+const int MUC_GAS_NGUY_HIEM  = 850;  
+const int MUC_GAS_AN_TOAN    = 800;  
+const float NGUONG_NONG      = 29.0; 
+const float NGUONG_MAT       = 27.0; 
+const int NGUONG_TOI         = 2000; 
+
+// --- CHÂN KẾT NỐI (PINOUT) ---
 #define DHTPIN 27      
 #define DHTTYPE DHT11
 #define MQ_PIN 32      
 #define LDR_PIN 34     
 #define PIR_PIN 13     
-#define LED_PIN 26          // LED đỏ báo động Gas
-#define BUZZER_PIN 33       // Còi báo động
-#define RELAY_FAN_PIN 14    // Relay 1: Quạt (Hút Gas / Làm mát)
-#define RELAY_LIGHT_PIN 25  // Relay 2: Đèn phòng tự động
+#define LED_PHONG_PIN 26    
+#define BUZZER_PIN 33       // SỬA: Còi báo động (Loại Active Low)
+#define RELAY_FAN_PIN 14    
+#define SERVO_PIN 18        
 
 DHT dht(DHTPIN, DHTTYPE);
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
+Servo windowServo;          
 
-// ---QUAT & DEN ---
-String webCommandQuat="OFF";
-String webCommandDen="OFF";
-// --- BIẾN ĐO LƯỜNG & LOGIC ---
+// --- BIẾN ĐIỀU KHIỂN & DỮ LIỆU ---
+String webCommandQuat = "AUTO";
+String webCommandDen = "AUTO";
 unsigned long tgFirebase = 0, tgDHT = 0, tgDashboard = 0, tgLichSu = 0;
 unsigned long thoiGianKhoiDong, thoiGianChuyenDongCuoi = 0;
 float t = 0, h = 0; 
 int gas = 0, ldr = 0, anhSangPct = 0;
 bool dangCoNguoi = false, dangBaoDongCoi = false;
 String lastGasStat = "", lastPresStat = ""; 
+bool cuaSoDangMo = false; 
 
-// --- CÁC HÀM PHÂN LOẠI TRẠNG THÁI ---
+// --- CÁC HÀM TRỢ GIÚP ---
 String getTempStatus(float val) {
-  if (val < 22) return "Se lanh";
-  if (val <= 32) return "Ly tuong";
-  if (val <= 37) return "Nong";
+  if (val < 20) return "Lanh";
+  if (val <= 28) return "Ly tuong"; 
+  if (val <= 32) return "Nong";
   return "RAT NONG";
 }
 
 String getHumidStatus(float val) {
-  if (val < 40) return "Kho hanh";
-  if (val <= 70) return "Thoai mai";
+  if (val < 45) return "Kho hanh";  
+  if (val <= 65) return "Thoai mai";
   return "Am uot";
 }
 
 String getLightStatus(int pct) {
-  if (pct < 30) return "Toi";
-  if (pct <= 70) return "Anh sang vua";
+  if (pct < 40) return "Toi";       
+  if (pct <= 80) return "Anh sang vua";
   return "Rat sang";
 }
 
 String getGasStatus(int val) {
-  if (val < 400) return "An toan";
-  if (val <= 600) return "Canh bao";
+  if (val <= MUC_GAS_AN_TOAN) return "An toan";
+  if (val < MUC_GAS_NGUY_HIEM) return "Canh bao";
   return "🚨 NGUY HIEM";
 }
 
-// --- CÁC HÀM TRỢ GIÚP THỜI GIAN ---
 String layGio() {
   struct tm ti;
   if(!getLocalTime(&ti)) return "Cho dong bo...";
@@ -101,52 +110,70 @@ void setup() {
   Serial.begin(115200);
   dht.begin();
   
-  pinMode(PIR_PIN, INPUT); 
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-pinMode(RELAY_FAN_PIN, OUTPUT);
-  pinMode(RELAY_LIGHT_PIN, OUTPUT);
-
-  digitalWrite(LED_PIN, LOW); 
+  // --- ĐÃ SỬA: Xuất HIGH để TẮT còi Active Low ---
   digitalWrite(BUZZER_PIN, HIGH); 
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, HIGH); 
+  
+  pinMode(PIR_PIN, INPUT); 
+  pinMode(LED_PHONG_PIN, OUTPUT); 
+  pinMode(RELAY_FAN_PIN, OUTPUT);
+
+  digitalWrite(LED_PHONG_PIN, LOW);   
   digitalWrite(RELAY_FAN_PIN, HIGH);  
-  digitalWrite(RELAY_LIGHT_PIN, HIGH);
+
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  windowServo.setPeriodHertz(50); 
+  windowServo.attach(SERVO_PIN, 500, 2400); 
+  windowServo.write(90); 
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("\n[WIFI] Ket noi");
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   
   configTime(7 * 3600, 0, "pool.ntp.org");
+  Serial.print("\n⏳ Dang dong bo thoi gian NTP...");
+  time_t now = time(nullptr);
+  while (now < 24 * 3600) {
+    Serial.print(".");
+    delay(500);
+    now = time(nullptr);
+  }
+  Serial.println(" OK!");
+
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
+  
+  Firebase.reconnectWiFi(true); 
   Firebase.begin(&config, &auth);
 
   thoiGianKhoiDong = millis(); 
-  Serial.println("\n✅ HE THONG V32.0 SAN SANG (BOOTING 30S...)");
+  Serial.println("\n✅ HE THONG V36.8: SAN SANG (DA FIX COI ACTIVE LOW)");
 }
 
 // ==========================================
 // 3. VÒNG LẶP CHÍNH (LOOP)
 // ==========================================
 void loop() {
-  
   gas = docAnalog(MQ_PIN);
   ldr = docAnalog(LDR_PIN);
   anhSangPct = map(ldr, 0, 4095, 100, 0);
   
   unsigned long thoiGianTroiQua = millis() - thoiGianKhoiDong;
-  bool daWarmUpXong = (thoiGianTroiQua > 30000);
+  bool daWarmUpXong = (thoiGianTroiQua > 30000); 
 
   if (digitalRead(PIR_PIN)) { thoiGianChuyenDongCuoi = millis(); dangCoNguoi = true; }
-  if (dangCoNguoi && (millis() - thoiGianChuyenDongCuoi > 300000)) dangCoNguoi = false;
+  if (dangCoNguoi && (millis() - thoiGianChuyenDongCuoi > 900000)) dangCoNguoi = false;
 
   if (millis() - tgDHT > 2000) {
     tgDHT = millis();
     float tn = dht.readTemperature();
-    float hn = dht.readHumidity();
-    if(!isnan(tn) && !isnan(hn)) { t = tn; h = hn; }
+    if(!isnan(tn)) { t = tn; h = dht.readHumidity(); }
   }
 
   String curGasStat = getGasStatus(gas);
@@ -154,72 +181,91 @@ void loop() {
   String thoiGianBayGio = layGio();
 
   // ==========================================
-  // D1. MODULE CẢNH BÁO & LÀM MÁT (SAFETY & CLIMATE)
+  // D1 & D2. MODULE ĐIỀU KHIỂN CHÍNH
   // ==========================================
   if (daWarmUpXong) {
     
-    // --- 1. Logic Còi và Đèn (Chỉ phụ thuộc vào Gas) ---
-    if (gas > 600) dangBaoDongCoi = true; 
-    else if (gas < 500) dangBaoDongCoi = false;
+    // --- 1. LOGIC AN TOÀN TRUNG TÂM ---
+    if (gas >= MUC_GAS_NGUY_HIEM) {
+      dangBaoDongCoi = true; 
+    } else if (gas <= MUC_GAS_AN_TOAN) {
+      dangBaoDongCoi = false;
+    }
 
+    // --- ĐÃ SỬA: Còi Báo Động Active Low ---
     if (dangBaoDongCoi) {
-      digitalWrite(BUZZER_PIN, LOW);   // HÚ CÒI
-      digitalWrite(LED_PIN, HIGH);     // SÁNG ĐÈN ĐỎ
-    } else if (gas > 400) {
-      digitalWrite(BUZZER_PIN, HIGH);  // TẮT CÒI
-      digitalWrite(LED_PIN, HIGH);     // VẪN SÁNG ĐÈN ĐỎ CẢNH BÁO SỚM
+      digitalWrite(BUZZER_PIN, LOW);  // LOW để HÚ CÒI
     } else {
-      digitalWrite(BUZZER_PIN, HIGH);
-      digitalWrite(LED_PIN, LOW);
+      digitalWrite(BUZZER_PIN, HIGH); // HIGH để TẮT CÒI
     }
 
-    // --- 2. Logic Quạt Thông Minh (Gas HOẶC [Nhiệt Độ + Hiện Diện]) ---
-    static bool quatDangChay = false;
-    const float NGUONG_NONG = 33.5;
-
-    // BƯỚC 1: Xác định khi nào CẦN BẬT
-    // Bật nếu: Gas cao HOẶC (Nóng + Có người) HOẶC (Web nhấn ON)
-    if (gas > 400 || (t >= NGUONG_NONG && dangCoNguoi) || (webCommandQuat == "ON")) {
-      quatDangChay = true; 
-    } 
-    // BƯỚC 2: Xác định khi nào BUỘC TẮT (Cưỡng ép từ Web)
-    else if (webCommandQuat == "OFF") {
-      quatDangChay = false;
-    }
-    // BƯỚC 3: Nếu không có lý do gì để bật (Gas giảm, trời mát) -> TẮT
-    else {
-      quatDangChay = false; 
-    }
-
-    if (quatDangChay) {
-      digitalWrite(RELAY_FAN_PIN, LOW); // Bật Relay Quạt
+    // Cửa Sổ Cứu Hộ
+    if (dangBaoDongCoi) {
+      if (!cuaSoDangMo) {
+        Serial.println("🚨 MUC GAS NGUY HIEM: Mo cua so xa khi doc...");
+for (int pos = 90; pos <= 180; pos += 1) { 
+          windowServo.write(pos);
+          delay(10); 
+        }
+        cuaSoDangMo = true;
+      }
     } else {
-      digitalWrite(RELAY_FAN_PIN, HIGH);// Tắt Relay Quạt
+      if (cuaSoDangMo) {
+        Serial.println("✅ DA AN TOAN: Dong cua so tu tu...");
+        for (int pos = 180; pos >= 90; pos -= 1) { 
+          windowServo.write(pos);
+          delay(10);
+        }
+        cuaSoDangMo = false;
+      }
     }
+
+    // --- 2. LOGIC QUẠT THÔNG GIÓ & 3. LOGIC ĐÈN GIẢ LẬP ---
+    if (dangBaoDongCoi) {
+      // Cúp điện: Quạt tắt (Relay HIGH), Đèn giả lập tắt (LED LOW)
+      digitalWrite(RELAY_FAN_PIN, HIGH); 
+      digitalWrite(LED_PHONG_PIN, LOW); 
+    } else {
+      
+      // Xử lý Quạt
+      bool quatChay = false;
+      if (webCommandQuat == "ON") quatChay = true;   
+      else if (webCommandQuat == "OFF") quatChay = false; 
+      else {                                             
+        if (t >= NGUONG_NONG && dangCoNguoi) quatChay = true;  
+        else if (t <= NGUONG_MAT || !dangCoNguoi) quatChay = false; 
+        else quatChay = (digitalRead(RELAY_FAN_PIN) == LOW); 
+      }
+      digitalWrite(RELAY_FAN_PIN, quatChay ? LOW : HIGH); 
+
+      // Xử lý Đèn Giả Lập 
+      bool denChay = false;
+      if (webCommandDen == "ON") denChay = true;         
+      else if (webCommandDen == "OFF") denChay = false;  
+      else {                                            
+        if (ldr > NGUONG_TOI && dangCoNguoi) denChay = true;   
+        else denChay = false;
+      }
+      digitalWrite(LED_PHONG_PIN, denChay ? HIGH : LOW); 
+    }
+
+  } else {
+    // KHỞI ĐỘNG 30S AN TOÀN
+    // --- ĐÃ SỬA: Xuất HIGH để tắt còi lúc chờ khởi động ---
+    digitalWrite(BUZZER_PIN, HIGH); 
+    digitalWrite(LED_PHONG_PIN, LOW);
+    digitalWrite(RELAY_FAN_PIN, HIGH);
+    windowServo.write(90); 
   }
 
   // ==========================================
-  // D2. MODULE TỰ ĐỘNG HÓA (LIGHTING)
-  // ==========================================
-  if (daWarmUpXong && !dangBaoDongCoi) { 
-    if ((ldr > 3000 && dangCoNguoi) || (webCommandDen == "ON")) {
-      digitalWrite(RELAY_LIGHT_PIN, LOW); // Bật đèn phòng
-    } else {
-      digitalWrite(RELAY_LIGHT_PIN, HIGH); // Tắt đèn phòng
-    }
-  }
-
-  // ==========================================
-  // E. ĐỒNG BỘ DỮ LIỆU FIREBASE
+  // E. ĐỒNG BỘ DỮ LIỆU FIREBASE 
   // ==========================================
   if (daWarmUpXong && Firebase.ready()) {
-    if (Firebase.RTDB.getString(&fbdo, "SmartHome/HienTai/ThietBi/Quat")) {
-    webCommandQuat = fbdo.stringData(); // webCommandQuat là biến String
-    } 
-    if (Firebase.RTDB.getString(&fbdo, "SmartHome/HienTai/ThietBi/Den")) {
-    webCommandDen = fbdo.stringData();
-    } 
-    // 1. Cập nhật Hiện Tại (5s/lần)
+    
+    if (Firebase.RTDB.getString(&fbdo, "SmartHome/Command/Quat")) webCommandQuat = fbdo.stringData();
+    if (Firebase.RTDB.getString(&fbdo, "SmartHome/Command/Den")) webCommandDen = fbdo.stringData();
+
     if (millis() - tgFirebase > 5000) {
       tgFirebase = millis();
       FirebaseJson cur;
@@ -228,24 +274,23 @@ void loop() {
       cur.set("MoiTruong/AnhSang/Pct", anhSangPct); cur.set("MoiTruong/AnhSang/Status", getLightStatus(anhSangPct));
       cur.set("AnToan/Gas/Val", gas); cur.set("AnToan/Gas/Status", curGasStat);
       cur.set("HienDien", curPresStat);
-      cur.set("ThietBi/Quat", (digitalRead(RELAY_FAN_PIN) == LOW) ? "ON" : "OFF");
-      cur.set("ThietBi/Den", (digitalRead(RELAY_LIGHT_PIN) == LOW) ? "ON" : "OFF");
-      cur.set("SyncTime", thoiGianBayGio);
       
+      cur.set("ThietBi/Quat", (digitalRead(RELAY_FAN_PIN) == LOW) ? "ON" : "OFF");
+      cur.set("ThietBi/Den", (digitalRead(LED_PHONG_PIN) == HIGH) ? "ON" : "OFF");
+cur.set("ThietBi/CuaSo", cuaSoDangMo ? "OPEN" : "CLOSED");
+      cur.set("SyncTime", thoiGianBayGio);
       Firebase.RTDB.setJSON(&fbdo, "SmartHome/HienTai", &cur);
     }
 
-    // 2. Nhật ký sự kiện 
     if (curGasStat != lastGasStat || curPresStat != lastPresStat) {
       FirebaseJson log;
       log.set("Time", thoiGianBayGio);
-      log.set("Event", (curGasStat == "🚨 NGUY HIEM") ? "CANH BAO GAS" : "THAY DOI TRANG THAI");
+      log.set("Event", (gas >= MUC_GAS_NGUY_HIEM) ? "CANH BAO GAS" : "THAY DOI TRANG THAI");
       log.set("Detail", "Gas: " + curGasStat + " | PIR: " + curPresStat);
       Firebase.RTDB.pushJSON(&fbdo, "SmartHome/NhatKy_KhanCap", &log);
       lastGasStat = curGasStat; lastPresStat = curPresStat;
     }
 
-    // 3. Lịch sử định kỳ (1 phút/lần)
     if (millis() - tgLichSu > 60000) {
       tgLichSu = millis();
       FirebaseJson hist;
@@ -256,26 +301,29 @@ void loop() {
   }
 
   // ==========================================
-  // F. DASHBOARD (SERIAL MONITOR)
+  // F. BẢNG ĐIỀU KHIỂN - SERIAL MONITOR
   // ==========================================
   if (millis() - tgDashboard > 2000) {
     tgDashboard = millis();
-    Serial.println("\n================ DASHBOARD V32.0 ================");
-if (daWarmUpXong) {
+    Serial.println("\n================ DASHBOARD V36.8 ================");
+    if (daWarmUpXong) {
       Serial.printf("⏰ %s | 🔥 Gas: %d (%s)\n", thoiGianBayGio.c_str(), gas, curGasStat.c_str());
       Serial.printf("🌡 %0.1fC (%s) | 💧 %0.1f%% (%s)\n", t, getTempStatus(t).c_str(), h, getHumidStatus(h).c_str());
       Serial.printf("💡 Sáng: %d%% (%s) | 👥: %s\n", anhSangPct, getLightStatus(anhSangPct).c_str(), curPresStat.c_str());
       
-      // Chú thích lý do quạt chạy chi tiết hơn
-      String lyDoQuat = "OFF";
-      if (digitalRead(RELAY_FAN_PIN) == LOW) {
-        if (gas > 400 && t >= 33.5 && dangCoNguoi) lyDoQuat = "ON (Hút Gas & Làm Mát)";
-        else if (gas > 400) lyDoQuat = "ON (Hút Gas uu tien!)";
-        else lyDoQuat = "ON (Làm Mát do có người)";
+      String fanState = (digitalRead(RELAY_FAN_PIN) == LOW) ? "ON" : "OFF";
+      String lightState = (digitalRead(LED_PHONG_PIN) == HIGH) ? "ON" : "OFF";
+      String windowState = cuaSoDangMo ? "MO (180 do)" : "DONG (90 do)"; 
+      
+      if (dangBaoDongCoi) {
+        Serial.println("⚠️ KHOA AN TOAN: Cúp toàn bộ điện Quạt/Đèn để chống tia lửa. Chi mo cua so!");
       }
-      Serial.printf("⚙️ Quat: %s | ⚙️ Den: %s\n", lyDoQuat.c_str(), (digitalRead(RELAY_LIGHT_PIN) == LOW)?"ON":"OFF");
+      
+      Serial.printf("⚙️ Quat: %s | 💡 Den: %s | 🪟 Cua so: %s\n", 
+                    fanState.c_str(), lightState.c_str(), windowState.c_str());
     } else {
-      Serial.printf("⏳ KHOI DONG: Con %lu giay...\n", (30000 - thoiGianTroiQua) / 1000);
+      Serial.printf("⏳ KHOI DONG HE THONG: Con %lu giay...\n", (30000 - thoiGianTroiQua) / 1000);
+      Serial.println("❌ Khoa Relay, Coi, Den & Servo an toan.");
     }
     Serial.println("=================================================");
   }
