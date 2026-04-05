@@ -83,37 +83,40 @@ if init_firebase():
         with col_r:
             st.write("### 🎮 Điều khiển thiết bị")
             
-            # --- ĐIỀU KHIỂN QUẠT (Có thêm AUTO) ---
+            # --- ĐIỀU KHIỂN QUẠT ---
             st.write("**🌀 Quạt thông gió**")
-            # Lấy trạng thái hiện tại từ Firebase (mặc định là AUTO nếu chưa có)
-            current_quat = tb.get('Quat', 'AUTO')
+            # Lấy lệnh mong muốn từ nhánh Command thay vì HienTai
+            cmd_ref_quat = db.reference('SmartHome/Command/Quat')
+            current_cmd_quat = cmd_ref_quat.get() or "AUTO"
             
-            # Sử dụng radio hoặc segmented_control để chọn 3 chế độ
             quat_options = ["ON", "OFF", "AUTO"]
             new_quat_state = st.radio(
                 "Chế độ quạt:",
                 quat_options,
-                index=quat_options.index(current_quat) if current_quat in quat_options else 2,
+                index=quat_options.index(current_cmd_quat) if current_cmd_quat in quat_options else 2,
                 horizontal=True,
                 key="fan_radio"
             )
             
-            # Nếu người dùng bấm chọn cái mới, cập nhật lên Firebase
-            if new_quat_state != current_quat:
-                db.reference('SmartHome/HienTai/ThietBi/Quat').set(new_quat_state)
+            if new_quat_state != current_cmd_quat:
+                cmd_ref_quat.set(new_quat_state) # Ghi vào Command để ESP32 đọc
                 st.rerun()
 
             st.divider()
 
             # --- ĐIỀU KHIỂN ĐÈN ---
             st.write("**💡 Đèn chiếu sáng**")
-            current_den = tb.get('Den', 'OFF')
+            cmd_ref_den = db.reference('SmartHome/Command/Den')
+            current_cmd_den = cmd_ref_den.get() or "OFF"
             
-            # Với đèn, bạn có thể giữ nút bấm hoặc dùng radio tương tự quạt
-            if st.button(f"ĐÈN ĐANG: {current_den}", use_container_width=True, type="primary" if current_den=="ON" else "secondary"):
-                new_den = "ON" if current_den == "OFF" else "OFF"
-                db.reference('SmartHome/HienTai/ThietBi/Den').set(new_den)
+            # Hiển thị nút bấm dựa trên lệnh trong Command
+            if st.button(f"LỆNH ĐÈN: {current_cmd_den}", use_container_width=True, type="primary" if current_cmd_den=="ON" else "secondary"):
+                new_den = "ON" if current_cmd_den == "OFF" else "OFF"
+                cmd_ref_den.set(new_den) # Ghi vào Command
                 st.rerun()
+            
+            # Gợi ý: Hiển thị thêm trạng thái thực tế từ ESP32 để đối chiếu
+            st.caption(f"Trạng thái thực tế: Quạt {tb.get('Quat')} | Đèn {tb.get('Den')}")
 
            
             # --- TAB 2: LỊCH SỬ HỆ THỐNG (LichSuHeThong) ---
