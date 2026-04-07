@@ -10,6 +10,7 @@
 #include "soc/soc.h"           
 #include "soc/rtc_cntl_reg.h"  
 #include <ESP32Servo.h> 
+#include <HTTPClient.h> // Thư viện để gọi URL Google Script
 
 // --- 1. CẤU HÌNH HỆ THỐNG ---
 #define WIFI_SSID "dick"
@@ -18,6 +19,10 @@
 #define DATABASE_URL "https://iothome-e7d29-default-rtdb.asia-southeast1.firebasedatabase.app"
 #define USER_EMAIL "esp32@smarthome.com"
 #define USER_PASSWORD "123456789"
+
+// --- BIẾN ĐIỀU KHIỂN GỬI MAIL ---
+unsigned long tgGuiMailCuoi = 0; 
+const unsigned long COOLDOWN_MAIL = 10000; // 10 giây hồi giữa các lần gửi
 
 // --- 2. HIỆU CHUẨN THEO THỰC TẾ LINH KIỆN CỦA BẠN ---
 const int MUC_GAS_NGUY_HIEM  = 850;  
@@ -284,11 +289,34 @@ cur.set("ThietBi/CuaSo", cuaSoDangMo ? "OPEN" : "CLOSED");
 
     if (curGasStat != lastGasStat || curPresStat != lastPresStat) {
       FirebaseJson log;
-      log.set("Time", thoiGianBayGio);
-      log.set("Event", (gas >= MUC_GAS_NGUY_HIEM) ? "CANH BAO GAS" : "THAY DOI TRANG THAI");
-      log.set("Detail", "Gas: " + curGasStat + " | PIR: " + curPresStat);
-      Firebase.RTDB.pushJSON(&fbdo, "SmartHome/NhatKy_KhanCap", &log);
-      lastGasStat = curGasStat; lastPresStat = curPresStat;
+      log.set("Time", thoiGianBayGio); // [cite: 62]
+      log.set("Event", (gas >= MUC_GAS_NGUY_HIEM) ? "🚨 CANH BAO GAS" : "THAY DOI TRANG THAI"); // [cite: 62]
+      log.set("Detail", "Gas: " + String(gas) + " | " + curGasStat + " | PIR: " + curPresStat); // [cite: 63]
+      Firebase.RTDB.pushJSON(&fbdo, "SmartHome/NhatKy_KhanCap", &log); // [cite: 63]
+
+      // --- LOGIC GỬI EMAIL HÀNG LOẠT QUA GOOGLE SCRIPT ---
+      if (gas >= MUC_GAS_NGUY_HIEM && (millis() - tgGuiMailCuoi > COOLDOWN_MAIL)) {
+        tgGuiMailCuoi = millis(); // Cập nhật thời điểm gửi mail cuối cùng
+        
+        HTTPClient http;
+        // THAY LINK WEB APP URL CỦA BẠN VÀO ĐÂY
+        String scriptUrl = "https://script.google.com/macros/s/AKfycbzqkZV6ytJ2o9OiA4ByR_QmOLfJuWi3OwEkXtewcFp1EUaI6gmZAswCEinro-BaZe13/exec"; 
+        String fullUrl = scriptUrl + "?gas=" + String(gas) + "&time=" + thoiGianBayGio;
+        
+        http.begin(fullUrl);
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); // Cho phép chuyển hướng Google Script
+        
+        int httpCode = http.GET();
+        if (httpCode > 0) {
+          Serial.println("📧 [MAIL] Da kich hoat gui canh bao toi danh sach Gmail!");
+        } else {
+          Serial.printf("📧 [MAIL] Loi ket noi: %s\n", http.errorToString(httpCode).c_str());
+        }
+        http.end();
+      }
+
+      lastGasStat = curGasStat; // [cite: 63]
+      lastPresStat = curPresStat; // [cite: 64]
     }
 
     if (millis() - tgLichSu > 60000) {
