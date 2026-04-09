@@ -23,6 +23,7 @@
 // --- BIẾN ĐIỀU KHIỂN GỬI MAIL ---
 unsigned long tgGuiMailCuoi = 0; 
 const unsigned long COOLDOWN_MAIL = 10000; // 10 giây hồi giữa các lần gửi
+bool daGuiMailCanhBao = false;
 
 // --- 2. HIỆU CHUẨN THEO THỰC TẾ LINH KIỆN CỦA BẠN ---
 const int MUC_GAS_NGUY_HIEM  = 850;  
@@ -208,7 +209,7 @@ void loop() {
     if (dangBaoDongCoi) {
       if (!cuaSoDangMo) {
         Serial.println("🚨 MUC GAS NGUY HIEM: Mo cua so xa khi doc...");
-for (int pos = 90; pos <= 180; pos += 1) { 
+          for (int pos = 90; pos <= 180; pos += 1) { 
           windowServo.write(pos);
           delay(10); 
         }
@@ -245,13 +246,19 @@ for (int pos = 90; pos <= 180; pos += 1) {
 
       // Xử lý Đèn Giả Lập 
       bool denChay = false;
-      if (webCommandDen == "ON") denChay = true;         
-      else if (webCommandDen == "OFF") denChay = false;  
-      else {                                            
-        if (ldr > NGUONG_TOI && dangCoNguoi) denChay = true;   
-        else denChay = false;
+      if (webCommandDen == "ON") {
+          denChay = true;         
+      } else if (webCommandDen == "OFF") {
+          denChay = false;
+      } else { // Chế độ AUTO                                            
+          // SỬA: Đèn bật khi TRỜI TỐI và CÓ NGƯỜI
+          if (anhSangPct < 30 && dangCoNguoi) { 
+              denChay = true;
+          } else {
+              denChay = false;
+          }
       }
-      digitalWrite(LED_PHONG_PIN, denChay ? HIGH : LOW); 
+      digitalWrite(LED_PHONG_PIN, denChay ? HIGH : LOW);
     }
 
   } else {
@@ -268,66 +275,59 @@ for (int pos = 90; pos <= 180; pos += 1) {
   // ==========================================
   if (daWarmUpXong && Firebase.ready()) {
     
-    if (Firebase.RTDB.getString(&fbdo, "SmartHome/Command/Quat")) webCommandQuat = fbdo.stringData();
-    if (Firebase.RTDB.getString(&fbdo, "SmartHome/Command/Den")) webCommandDen = fbdo.stringData();
+    // Đọc lệnh điều khiển từ Firebase
+    if (Firebase.RTDB.getString(&fbdo, "SmartHome/Command/Quat")) webCommandQuat = fbdo.stringData(); 
+    if (Firebase.RTDB.getString(&fbdo, "SmartHome/Command/Den")) webCommandDen = fbdo.stringData(); 
 
+    // Cập nhật trạng thái hiện tại lên Firebase (mỗi 5 giây)
     if (millis() - tgFirebase > 5000) {
-      tgFirebase = millis();
-      FirebaseJson cur;
-      cur.set("MoiTruong/NhietDo/Val", t); cur.set("MoiTruong/NhietDo/Status", getTempStatus(t));
-      cur.set("MoiTruong/DoAm/Val", h); cur.set("MoiTruong/DoAm/Status", getHumidStatus(h));
-      cur.set("MoiTruong/AnhSang/Pct", anhSangPct); cur.set("MoiTruong/AnhSang/Status", getLightStatus(anhSangPct));
-      cur.set("AnToan/Gas/Val", gas); cur.set("AnToan/Gas/Status", curGasStat);
-      cur.set("HienDien", curPresStat);
-      
-      cur.set("ThietBi/Quat", (digitalRead(RELAY_FAN_PIN) == LOW) ? "ON" : "OFF");
-      cur.set("ThietBi/Den", (digitalRead(LED_PHONG_PIN) == HIGH) ? "ON" : "OFF");
-cur.set("ThietBi/CuaSo", cuaSoDangMo ? "OPEN" : "CLOSED");
-      cur.set("SyncTime", thoiGianBayGio);
-      Firebase.RTDB.setJSON(&fbdo, "SmartHome/HienTai", &cur);
+        tgFirebase = millis(); 
+        FirebaseJson cur;
+        cur.set("MoiTruong/NhietDo/Val", t); cur.set("MoiTruong/NhietDo/Status", getTempStatus(t)); 
+        cur.set("MoiTruong/DoAm/Val", h); cur.set("MoiTruong/DoAm/Status", getHumidStatus(h)); 
+        cur.set("MoiTruong/AnhSang/Pct", anhSangPct); cur.set("MoiTruong/AnhSang/Status", getLightStatus(anhSangPct)); 
+        cur.set("AnToan/Gas/Val", gas); cur.set("AnToan/Gas/Status", curGasStat); 
+        cur.set("HienDien", curPresStat); 
+        cur.set("ThietBi/Quat", (digitalRead(RELAY_FAN_PIN) == LOW) ? "ON" : "OFF"); 
+        cur.set("ThietBi/Den", (digitalRead(LED_PHONG_PIN) == HIGH) ? "ON" : "OFF"); 
+        cur.set("ThietBi/CuaSo", cuaSoDangMo ? "OPEN" : "CLOSED"); 
+        cur.set("SyncTime", thoiGianBayGio); 
+        Firebase.RTDB.setJSON(&fbdo, "SmartHome/HienTai", &cur); 
     }
 
+    // --- 1. GHI NHẬT KÝ KHI ĐỔI TRẠNG THÁI ---
     if (curGasStat != lastGasStat || curPresStat != lastPresStat) {
-      FirebaseJson log;
-      log.set("Time", thoiGianBayGio); // [cite: 62]
-      log.set("Event", (gas >= MUC_GAS_NGUY_HIEM) ? "🚨 CANH BAO GAS" : "THAY DOI TRANG THAI"); // [cite: 62]
-      log.set("Detail", "Gas: " + String(gas) + " | " + curGasStat + " | PIR: " + curPresStat); // [cite: 63]
-      Firebase.RTDB.pushJSON(&fbdo, "SmartHome/NhatKy_KhanCap", &log); // [cite: 63]
-
-      // --- LOGIC GỬI EMAIL HÀNG LOẠT QUA GOOGLE SCRIPT ---
-      if (gas >= MUC_GAS_NGUY_HIEM && (millis() - tgGuiMailCuoi > COOLDOWN_MAIL)) {
-        tgGuiMailCuoi = millis(); // Cập nhật thời điểm gửi mail cuối cùng
+        FirebaseJson log;
+        log.set("Time", thoiGianBayGio); 
+        log.set("Event", (gas >= MUC_GAS_NGUY_HIEM) ? "🚨 CANH BAO GAS" : "THAY DOI TRANG THAI"); 
+        log.set("Detail", "Gas: " + String(gas) + " | " + curGasStat + " | PIR: " + curPresStat); 
+        Firebase.RTDB.pushJSON(&fbdo, "SmartHome/NhatKy_KhanCap", &log); 
         
-        HTTPClient http;
-        // THAY LINK WEB APP URL CỦA BẠN VÀO ĐÂY
-        String scriptUrl = "https://script.google.com/macros/s/AKfycbzqkZV6ytJ2o9OiA4ByR_QmOLfJuWi3OwEkXtewcFp1EUaI6gmZAswCEinro-BaZe13/exec"; 
-        String fullUrl = scriptUrl + "?gas=" + String(gas) + "&time=" + thoiGianBayGio;
-        
-        http.begin(fullUrl);
-        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); // Cho phép chuyển hướng Google Script
-        
-        int httpCode = http.GET();
-        if (httpCode > 0) {
-          Serial.println("📧 [MAIL] Da kich hoat gui canh bao toi danh sach Gmail!");
-        } else {
-          Serial.printf("📧 [MAIL] Loi ket noi: %s\n", http.errorToString(httpCode).c_str());
-        }
-        http.end();
-      }
-
-      lastGasStat = curGasStat; // [cite: 63]
-      lastPresStat = curPresStat; // [cite: 64]
+        lastGasStat = curGasStat; 
+        lastPresStat = curPresStat;
     }
 
+    // --- 2. LOGIC GỬI EMAIL THÔNG MINH ---
+    if (gas >= MUC_GAS_NGUY_HIEM && (millis() - tgGuiMailCuoi > COOLDOWN_MAIL)) {
+        tgGuiMailCuoi = millis(); 
+        daGuiMailCanhBao = true; 
+        guiMailSmartHome(gas, "danger", thoiGianBayGio); 
+    }
+    else if (gas < MUC_GAS_NGUY_HIEM && daGuiMailCanhBao == true) {
+        daGuiMailCanhBao = false; 
+        guiMailSmartHome(gas, "safe", thoiGianBayGio); 
+    }
+
+    // --- 3. GHI LỊCH SỬ ĐỊNH KỲ (mỗi 1 phút) ---
     if (millis() - tgLichSu > 60000) {
-      tgLichSu = millis();
-      FirebaseJson hist;
-      hist.set("Time", thoiGianBayGio); hist.set("Temp", t); 
-      hist.set("Humid", h); hist.set("Gas", gas); hist.set("Light", anhSangPct);
-      Firebase.RTDB.pushJSON(&fbdo, "SmartHome/LichSu/" + layNgay(), &hist);
+        tgLichSu = millis(); 
+        FirebaseJson hist;
+        hist.set("Time", thoiGianBayGio); hist.set("Temp", t); 
+        hist.set("Humid", h); hist.set("Gas", gas); hist.set("Light", anhSangPct); 
+        Firebase.RTDB.pushJSON(&fbdo, "SmartHome/LichSu/" + layNgay(), &hist); 
     }
-  }
-
+} // Kết thúc block Firebase
+	
   // ==========================================
   // F. BẢNG ĐIỀU KHIỂN - SERIAL MONITOR
   // ==========================================
@@ -355,4 +355,27 @@ cur.set("ThietBi/CuaSo", cuaSoDangMo ? "OPEN" : "CLOSED");
     }
     Serial.println("=================================================");
   }
+}
+String scriptUrl = "https://script.google.com/macros/s/AKfycbwofTEzdW22n25lXj7x3MhIYmt0LJ8rkR39w8kaX5FAgeQTSqQUxvYL3ffo1fx3XBvK/exec";
+
+void guiMailSmartHome(int gasValue, String status, String currentTime) {
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        String encodedTime = currentTime; 
+        encodedTime.replace(" ", "%20"); 
+
+        String fullUrl = scriptUrl + "?gas=" + String(gasValue) + "&time=" + encodedTime + "&status=" + status; 
+
+        Serial.println("📧 Gửi mail trạng thái: " + status); 
+        http.begin(fullUrl);
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        
+        int httpCode = http.GET(); 
+        if (httpCode > 0) {
+            Serial.printf("📧 [MAIL] Phản hồi: %d\n", httpCode); 
+        } else {
+            Serial.printf("📧 [MAIL] Lỗi: %s\n", http.errorToString(httpCode).c_str()); 
+        }
+        http.end();
+    }
 }
